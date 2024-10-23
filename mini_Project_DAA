@@ -1,0 +1,127 @@
+# This project demonstrates a Simple Moving Average (SMA) Crossover Strategy using Python in a Google Colab environment. The project involves creating an interactive GUI-like experience using ipywidgets to input stock information and visualize the trading strategy with matplotlib
+pip install yfinance matplotlib pandas
+
+import yfinance as yf
+import pandas as pd
+import matplotlib.pyplot as plt
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+
+
+# Function to fetch historical stock data
+def fetch_stock_data(ticker, start, end):
+    data = yf.download(ticker, start=start, end=end)
+    return data
+
+# Calculate Moving Averages
+def calculate_moving_averages(data, short_window, long_window):
+    data['SMA_Short'] = data['Close'].rolling(window=short_window, min_periods=1).mean()
+    data['SMA_Long'] = data['Close'].rolling(window=long_window, min_periods=1).mean()
+    return data
+
+# Implement the SMA crossover strategy
+def implement_strategy(data):
+    buy_signals = []
+    sell_signals = []
+    position = False
+
+    for i in range(len(data)):
+        if data['SMA_Short'][i] > data['SMA_Long'][i]:
+            if not position:
+                buy_signals.append(data['Close'][i])
+                sell_signals.append(None)
+                position = True
+            else:
+                buy_signals.append(None)
+                sell_signals.append(None)
+        elif data['SMA_Short'][i] < data['SMA_Long'][i]:
+            if position:
+                buy_signals.append(None)
+                sell_signals.append(data['Close'][i])
+                position = False
+            else:
+                buy_signals.append(None)
+                sell_signals.append(None)
+        else:
+            buy_signals.append(None)
+            sell_signals.append(None)
+
+    data['Buy_Signal_Price'] = buy_signals
+    data['Sell_Signal_Price'] = sell_signals
+
+    return data
+
+# Plot the strategy results
+def plot_strategy(data, ticker, short_window, long_window):
+    clear_output(wait=True)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.plot(data['Close'], label=f'{ticker} Close Price', alpha=0.5)
+    ax.plot(data['SMA_Short'], label=f'{short_window}-Day SMA', alpha=0.75)
+    ax.plot(data['SMA_Long'], label=f'{long_window}-Day SMA', alpha=0.75)
+    ax.scatter(data.index, data['Buy_Signal_Price'], label='Buy Signal', marker='^', color='green', alpha=1)
+    ax.scatter(data.index, data['Sell_Signal_Price'], label='Sell Signal', marker='v', color='red', alpha=1)
+    ax.set_title(f'{ticker} - SMA Crossover Strategy')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Price')
+    ax.legend()
+    plt.show()
+
+# Backtesting performance (simple)
+def backtest_strategy(data):
+    initial_capital = 10000
+    capital = initial_capital
+    positions = 0
+
+    for i in range(len(data)):
+        if data['Buy_Signal_Price'][i] is not None:
+            buy_price = data['Buy_Signal_Price'][i]
+            shares = capital // buy_price
+            positions = shares
+            capital -= shares * buy_price
+        elif data['Sell_Signal_Price'][i] is not None and positions > 0:
+            sell_price = data['Sell_Signal_Price'][i]
+            capital += positions * sell_price
+            positions = 0
+
+    final_value = capital + (positions * data['Close'].iloc[-1])
+    total_return = (final_value - initial_capital) / initial_capital * 100
+    return total_return
+
+# Function to trigger the strategy
+def run_strategy(b):
+    ticker = ticker_input.value.upper()
+    start_date = start_date_input.value
+    end_date = end_date_input.value
+    short_window = int(short_window_input.value)
+    long_window = int(long_window_input.value)
+
+    try:
+        # Fetch and process data
+        data = fetch_stock_data(ticker, start_date, end_date)
+        data = calculate_moving_averages(data, short_window, long_window)
+        data = implement_strategy(data)
+
+        # Plot the strategy
+        plot_strategy(data, ticker, short_window, long_window)
+
+        # Backtest and display results
+        total_return = backtest_strategy(data)
+        result_label.value = f"Total Return: {total_return:.2f}%"
+
+    except Exception as e:
+        result_label.value = f"Error: {str(e)}"
+
+# Input widgets
+ticker_input = widgets.Text(value='AAPL', description='Ticker:')
+start_date_input = widgets.Text(value='2018-01-01', description='Start Date:')
+end_date_input = widgets.Text(value='2023-01-01', description='End Date:')
+short_window_input = widgets.IntText(value=50, description='Short Window:')
+long_window_input = widgets.IntText(value=200, description='Long Window:')
+run_button = widgets.Button(description="Run Strategy")
+result_label = widgets.Label(value="")
+
+# Bind button click to function
+run_button.on_click(run_strategy)
+
+# Display the widgets
+display(ticker_input, start_date_input, end_date_input, short_window_input, long_window_input, run_button, result_label)
